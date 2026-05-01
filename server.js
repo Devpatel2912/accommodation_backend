@@ -1,6 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
+import morgan from "morgan";
 import authRoutes from "./routes/auth.js";
 import requestsRoutes from "./routes/requests.js";
 import adminRoutes from "./routes/admin.js";
@@ -12,6 +13,7 @@ dotenv.config();
 const app = express();
 
 app.use(cors());
+app.use(morgan("dev"));
 app.use(express.json());
 
 app.use("/auth", authRoutes);

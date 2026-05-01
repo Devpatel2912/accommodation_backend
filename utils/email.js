@@ -1,7 +1,9 @@
 import nodemailer from "nodemailer";
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: "smtp.gmail.com",
+  port: 465,
+  secure: true, // Use SSL
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
@@ -125,55 +127,63 @@ export const sendMemberBookingEmail = async (email, memberName, details) => {
 };
 
 export const sendOtpEmail = async (email, otp) => {
-  await transporter.sendMail({
-    from: process.env.EMAIL_USER,
-    to: email,
-    subject: "Accommodation App - OTP Verification",
-    html: `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>OTP Verification</title>
-      </head>
-      <body style="margin:0; padding:0; background-color:#0f0f0f; font-family:Arial, sans-serif;">
-        <div style="max-width:500px; margin:40px auto; background:#1c1c1c; border-radius:12px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
-          <!-- Header -->
-          <div style="background:#4a7bd1; padding:20px; text-align:center;">
-            <h1 style="margin:0; color:#000; font-size:24px;">Accommodation App</h1>
-          </div>
-          <!-- Body -->
-          <div style="padding:30px; text-align:center; color:#fff;">
-            <h2 style="margin-bottom:10px;">OTP Verification</h2>
-            <p style="color:#ccc; font-size:16px;">
-              Your One-Time Password is:
-            </p>
-            <!-- OTP BOX -->
-            <div style="
-              margin:25px 0;
-              font-size:32px;
-              letter-spacing:10px;
-              font-weight:bold;
-              color:#6fa8ff;
-            ">
-              ${otp}
+  console.log(`📧 Attempting to send OTP to: ${email}`);
+  try {
+    const info = await transporter.sendMail({
+      from: `"Accommodation App" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Accommodation App - OTP Verification",
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>OTP Verification</title>
+        </head>
+        <body style="margin:0; padding:0; background-color:#0f0f0f; font-family:Arial, sans-serif;">
+          <div style="max-width:500px; margin:40px auto; background:#1c1c1c; border-radius:12px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
+            <!-- Header -->
+            <div style="background:#4a7bd1; padding:20px; text-align:center;">
+              <h1 style="margin:0; color:#000; font-size:24px;">Accommodation App</h1>
             </div>
-            <p style="color:#ccc; font-size:15px;">
-              This OTP will expire in <strong>10 minutes</strong>.
-            </p>
-            <p style="color:#888; font-size:13px; margin-top:20px;">
-              If you did not request this OTP, please ignore this email.
-            </p>
+            <!-- Body -->
+            <div style="padding:30px; text-align:center; color:#fff;">
+              <h2 style="margin-bottom:10px;">OTP Verification</h2>
+              <p style="color:#ccc; font-size:16px;">
+                Your One-Time Password is:
+              </p>
+              <!-- OTP BOX -->
+              <div style="
+                margin:25px 0;
+                font-size:32px;
+                letter-spacing:10px;
+                font-weight:bold;
+                color:#6fa8ff;
+              ">
+                ${otp}
+              </div>
+              <p style="color:#ccc; font-size:15px;">
+                This OTP will expire in <strong>10 minutes</strong>.
+              </p>
+              <p style="color:#888; font-size:13px; margin-top:20px;">
+                If you did not request this OTP, please ignore this email.
+              </p>
+            </div>
+            <!-- Footer -->
+            <div style="background:#2a2a2a; padding:15px; text-align:center;">
+              <p style="color:#888; font-size:12px; margin:0;">
+                © 2026 Accommodation App. All rights reserved.
+              </p>
+            </div>
           </div>
-          <!-- Footer -->
-          <div style="background:#2a2a2a; padding:15px; text-align:center;">
-            <p style="color:#888; font-size:12px; margin:0;">
-              © 2026 Accommodation App. All rights reserved.
-            </p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `,
-  });
+        </body>
+        </html>
+      `,
+    });
+    console.log(`✅ OTP sent successfully: ${info.messageId}`);
+    return info;
+  } catch (error) {
+    console.error(`❌ Error sending OTP to ${email}:`, error);
+    throw error;
+  }
 };

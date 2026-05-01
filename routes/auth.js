@@ -14,25 +14,30 @@ const router = express.Router();
 router.post("/request-otp", async (req, res) => {
   const { email } = req.body;
 
-  // Check if user exists in the database
-  const { data: user, error } = await supabase
-    .from("users")
-    .select("id")
-    .eq("email", email)
-    .single();
+  try {
+    // Check if user exists in the database
+    const { data: user, error } = await supabase
+      .from("users")
+      .select("id")
+      .eq("email", email)
+      .single();
 
-  if (error || !user) {
-    return res.status(400).json({ error: "Email not registered. Please sign up first." });
+    if (error || !user) {
+      return res.status(400).json({ error: "Email not registered. Please sign up first." });
+    }
+
+    const otp = generateOtp();
+    const hashedOtp = await bcrypt.hash(otp, 10);
+
+    const token = createOtpToken(email, hashedOtp);
+
+    await sendOtpEmail(email, otp);
+
+    res.json({ success: true, message: "OTP sent successfully", otpToken: token });
+  } catch (err) {
+    console.error("❌ OTP Error:", err);
+    res.status(500).json({ error: "Failed to send OTP. Please try again later." });
   }
-
-  const otp = generateOtp();
-  const hashedOtp = await bcrypt.hash(otp, 10);
-
-  const token = createOtpToken(email, hashedOtp);
-
-  await sendOtpEmail(email, otp);
-
-  res.json({ otpToken: token });
 });
 
 
