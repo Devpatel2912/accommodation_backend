@@ -10,6 +10,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+
 // ✅ Send Status Update to User (Enhanced with Allocation Details)
 export const sendRequestStatusEmail = async (email, status, notes, details = null) => {
   let allocationHtml = "";
