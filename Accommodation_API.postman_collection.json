@@ -1,0 +1,1786 @@
+{
+	"info": {
+		"_postman_id": "e8e19c3b-5511-4e78-9e12-c2e825a0750e",
+		"name": "Accommodation API",
+		"description": "Comprehensive collection for the Accommodation backend APIs including Admin, Room, and House management.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Request OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"test123@gmail.com\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/request-otp",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"request-otp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Verify OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"test123@gmail.com\",\n  \"otp\": \"123456\",\n  \"otpToken\": \"PASTE_TOKEN_HERE\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/verify-otp",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"verify-otp"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Login (Password)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"test123@gmail.com\",\n  \"password\": \"123456\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						}
+					}
+				},
+				{
+					"name": "Get Profile",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/auth/profile",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"profile"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "User Requests",
+			"item": [
+				{
+					"name": "Create Request",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"check_in\": \"2026-05-10\",\n  \"check_out\": \"2026-05-15\",\n  \"total_people\": 2,\n  \"notes\": \"Need a quiet room if possible\",\n  \"members\": [\n    {\n      \"name\": \"Nirbhay Patel\",\n      \"contact\": \"9876543210\",\n      \"pradesh\": \"Gujarat\",\n      \"email\": \"nirbhaypatel7777@gmail.com\"\n    },\n    {\n      \"name\": \"Test User\",\n      \"contact\": \"1234567890\",\n      \"pradesh\": \"Maharashtra\",\n      \"email\": \"test@gmail.com\"\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/requests",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"requests"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get My Requests",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/requests/my",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"requests",
+								"my"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Forward Booking to Members",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"member_ids\": [16, 17]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/requests/4/forward-to-members",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"requests",
+								"4",
+								"forward-to-members"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Bulk Upload Members (Excel/CSV)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": []
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/requests/4/upload-members",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"requests",
+								"4",
+								"upload-members"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Request",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/requests/4",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"requests",
+								"4"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Admin",
+			"item": [
+				{
+					"name": "Inventory Search",
+					"item": [
+						{
+							"name": "Search Available Rooms",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/rooms/available?check_in=2026-05-10&check_out=2026-05-15",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"rooms",
+										"available"
+									],
+									"query": [
+										{
+											"key": "check_in",
+											"value": "2026-05-10"
+										},
+										{
+											"key": "check_out",
+											"value": "2026-05-15"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Search Available Houses",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/houses/available?check_in=2026-05-10&check_out=2026-05-15",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"houses",
+										"available"
+									],
+									"query": [
+										{
+											"key": "check_in",
+											"value": "2026-05-10"
+										},
+										{
+											"key": "check_out",
+											"value": "2026-05-15"
+										}
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Requests",
+					"item": [
+						{
+							"name": "Get All Requests",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/requests",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"requests"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Single Request",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/requests/1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"requests",
+										"1"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Approve Request (Complete)",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"status\": \"ACCEPTED\",\n  \"notes\": \"Approved by admin. All members have been allocated to their respective rooms.\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/requests/4",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"requests",
+										"4"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Decline Request",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"status\": \"REJECTED\",\n  \"notes\": \"Unfortunately, we cannot accommodate your request for the selected dates due to full occupancy. Please consider alternate dates or contact us for further assistance.\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/requests/4",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"requests",
+										"4"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Easy Allocate Member",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"request_member_id\": 11,\n  \"room_id\": 1\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/requests/4/allocate-member",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"requests",
+										"4",
+										"allocate-member"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Accept Request (Complete)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"notes\": \"Fully assigned by admin\",\n  \"room_assignments\": [\n    {\n      \"room_id\": 1,\n      \"house_id\": 1,\n      \"assigned_capacity\": 2,\n      \"member_ids\": [1, 2],\n      \"check_in\": \"2026-05-10\",\n      \"check_out\": \"2026-05-15\"\n    }\n  ],\n  \"house_assignments\": [\n    {\n      \"house_id\": 1,\n      \"check_in\": \"2026-05-10\",\n      \"check_out\": \"2026-05-15\"\n    }\n  ]\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/requests/1/accept-complete",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"requests",
+										"1",
+										"accept-complete"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Request",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/requests/1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"requests",
+										"1"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Allocations",
+					"item": [
+						{
+							"name": "Create Allocation",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"request_id\": 1\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/allocations",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"allocations"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get All Allocations",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/allocations",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"allocations"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Single Allocation",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/allocations/1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"allocations",
+										"1"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update Allocation",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"request_id\": 2\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/allocations/1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"allocations",
+										"1"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Allocation",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/allocations/1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"allocations",
+										"1"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Allocation Items",
+					"item": [
+						{
+							"name": "Create Allocation Item",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"allocation_id\": 1,\n  \"room_id\": 1,\n  \"assigned_capacity\": 2\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/allocation-items",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"allocation-items"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get All Items",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/allocation-items",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"allocation-items"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update Item",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"room_id\": 1,\n  \"house_id\": null,\n  \"assigned_capacity\": 3,\n  \"member_ids\": [11, 12]\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/allocation-items/1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"allocation-items",
+										"1"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Item",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/allocation-items/1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"allocation-items",
+										"1"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Users Management",
+					"item": [
+						{
+							"name": "Create User/Admin",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john@example.com\",\n  \"phone\": \"1234567890\",\n  \"role\": \"USER\",\n  \"password_hash\": \"$2b$10$hashed_pwd\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/users",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"users"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get All Users",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/users",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"users"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Single User",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/users/1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"users",
+										"1"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update User",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"name\": \"John Updated\",\n  \"email\": \"john_updated@example.com\",\n  \"phone\": \"0987654321\",\n  \"role\": \"USER\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/users/1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"users",
+										"1"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Delete User",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/users/1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"users",
+										"1"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Room Bookings",
+					"item": [
+						{
+							"name": "Create Room Booking",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"room_id\": 1,\n  \"request_id\": 4,\n  \"check_in\": \"2026-05-10\",\n  \"check_out\": \"2026-05-15\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/room-bookings",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"room-bookings"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get All Bookings",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/room-bookings",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"room-bookings"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Single Booking",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/room-bookings/2",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"room-bookings",
+										"2"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update Booking",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"room_id\": 1,\n  \"request_id\": 4,\n  \"check_in\": \"2026-05-12\",\n  \"check_out\": \"2026-05-17\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/room-bookings/2",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"room-bookings",
+										"2"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Booking",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/room-bookings/1",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"room-bookings",
+										"1"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Release Room (Early Checkout)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/room-bookings/1/release",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"room-bookings",
+										"1",
+										"release"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Release/Cancel Room by Room ID",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/rooms/1/release",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"rooms",
+										"1",
+										"release"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Member Allocations",
+					"item": [
+						{
+							"name": "Create Member Allocation",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"request_member_id\": 3,\n  \"allocation_item_id\": 2\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/member-allocations",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"member-allocations"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get All Allocations",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/member-allocations",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"member-allocations"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "House Bookings",
+					"item": [
+						{
+							"name": "Create House Booking",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"house_id\": 1,\n  \"request_id\": 4,\n  \"check_in\": \"2026-05-10\",\n  \"check_out\": \"2026-05-15\"\n}"
+								},
+								"url": {
+									"raw": "{{baseUrl}}/admin/house-bookings",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"house-bookings"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get All Bookings",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/house-bookings",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"house-bookings"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Release House (Early Checkout)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/house-bookings/1/release",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"house-bookings",
+										"1",
+										"release"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Release/Cancel House by House ID",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/houses/1/release",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"houses",
+										"1",
+										"release"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Bookings & Release",
+					"item": [
+						{
+							"name": "Get All Room Bookings",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/room-bookings",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"room-bookings"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get All House Bookings",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/house-bookings",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"house-bookings"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Release Room (By Booking ID)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/room-bookings/1/release",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"room-bookings",
+										"1",
+										"release"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Release Room (By Room ID)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/rooms/1/release",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"rooms",
+										"1",
+										"release"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Release House (By Booking ID)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/house-bookings/1/release",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"house-bookings",
+										"1",
+										"release"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Release House (By House ID)",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{adminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/admin/houses/1/release",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"admin",
+										"houses",
+										"1",
+										"release"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Rooms",
+			"item": [
+				{
+					"name": "Create Room",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_number\": \"101\",\n  \"capacity\": 4,\n  \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/rooms",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"rooms"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Rooms",
+					"request": {
+						"method": "GET",
+						"url": {
+							"raw": "{{baseUrl}}/rooms",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"rooms"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Single Room",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/rooms/1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"rooms",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Room",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"room_number\": \"102\",\n  \"capacity\": 5,\n  \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/rooms/1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"rooms",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Room (Soft)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/rooms/1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"rooms",
+								"1"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Houses",
+			"item": [
+				{
+					"name": "Create House",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"owner_name\": \"Amit Shah\",\n  \"contact_number\": \"9999999999\",\n  \"address\": \"123 S.G. Highway, Ahmedabad\",\n  \"capacity\": 10,\n  \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/houses",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"houses"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get All Houses",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/houses",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"houses"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Single House",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/houses/1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"houses",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update House",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"owner_name\": \"Amit Shah (Updated)\",\n  \"contact_number\": \"8888888888\",\n  \"address\": \"456 New Road, Ahmedabad\",\n  \"capacity\": 15,\n  \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/houses/1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"houses",
+								"1"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete House (Soft)",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{adminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/houses/1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"houses",
+								"1"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:5001",
+			"type": "string"
+		},
+		{
+			"key": "accessToken",
+			"value": "PASTE_USER_TOKEN_HERE",
+			"type": "string"
+		},
+		{
+			"key": "adminToken",
+			"value": "PASTE_ADMIN_TOKEN_HERE",
+			"type": "string"
+		}
+	]
+}
