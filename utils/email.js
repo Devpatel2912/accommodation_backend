@@ -15,7 +15,7 @@ const transporter = nodemailer.createTransport({
 export const sendRequestStatusEmail = async (email, status, notes, details = null) => {
   let allocationHtml = "";
 
-  if (status === "ACCEPTED" && details) {
+  if ((status === "ACCEPTED" || status.startsWith("APPROVED")) && details) {
     allocationHtml = `
       <h3>Allocation Details</h3>
       <p><strong>Check-in:</strong> ${details.check_in}</p>
@@ -25,6 +25,7 @@ export const sendRequestStatusEmail = async (email, status, notes, details = nul
           <tr style="background-color: #f2f2f2;">
             <th>Member</th>
             <th>Allocation</th>
+            <th>Map</th>
           </tr>
         </thead>
         <tbody>
@@ -32,6 +33,11 @@ export const sendRequestStatusEmail = async (email, status, notes, details = nul
             <tr>
               <td>${alloc.member_name}</td>
               <td>${alloc.location}</td>
+              <td>
+                ${(alloc.latitude && alloc.longitude) 
+                  ? `<a href="https://www.google.com/maps/search/?api=1&query=${alloc.latitude},${alloc.longitude}" target="_blank" style="color: #007bff; text-decoration: none;">📍 View Map</a>`
+                  : 'N/A'}
+              </td>
             </tr>
           `).join("")}
         </tbody>

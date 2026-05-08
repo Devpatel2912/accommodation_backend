@@ -183,9 +183,10 @@ router.get("/", async (req, res) => {
             };
         });
 
-        // 4. In selection mode, we only show rooms with availability
+        // 4. When dates are supplied for allocation, keep partially occupied
+        // rooms visible and hide only rooms with no remaining capacity.
         if (check_in && check_out) {
-            rooms = rooms.filter(room => room.remaining_capacity > 0);
+            rooms = rooms.filter(room => Number(room.remaining_capacity) > 0);
         }
 
         res.json({

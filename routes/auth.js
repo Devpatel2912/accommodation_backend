@@ -85,32 +85,6 @@ router.post("/verify-otp", async (req, res) => {
 });
 
 
-// =========================
-// 3. PASSWORD LOGIN
-// =========================
-router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-
-  const { data: user, error } = await supabase
-    .from("users")
-    .select("*")
-    .eq("email", email)
-    .single();
-
-  if (error || !user) {
-    return res.status(400).json({ error: "Invalid credentials" });
-  }
-
-  const match = await bcrypt.compare(password, user.password_hash);
-
-  if (!match) {
-    return res.status(400).json({ error: "Invalid credentials" });
-  }
-
-  const token = createAuthToken(user);
-
-  res.json({ accessToken: token, user });
-});
 
 // =========================
 // 4. GET PROFILE
@@ -150,4 +124,4 @@ router.get("/profile", authenticateToken, async (req, res) => {
   }
 });
 
-export default router;
+export default router;

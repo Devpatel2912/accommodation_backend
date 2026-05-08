@@ -2,8 +2,72 @@ import express from "express";
 import { supabase } from "../config/supabase.js";
 import { verifyToken } from "../utils/jwt.js";
 import { sendRequestStatusEmail } from "../utils/email.js";
+import { sendPubSubNotification } from "../utils/pubsub.js";
 
 const router = express.Router();
+
+const getTodayDateString = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+};
+
+const canModifyAllocationForCheckIn = (checkIn) => {
+  if (!checkIn) return false;
+  return checkIn.toString().split("T")[0] > getTodayDateString();
+};
+
+const shouldPromoteRequestOnAllocation = (status) => {
+  const normalized = (status || "").toString().trim().toUpperCase();
+  return !normalized || normalized === "PENDING" || normalized === "CANCELLED";
+};
+
+const isAcceptedOrApprovedStatus = (status) => {
+  const normalized = (status || "").toString().trim().toUpperCase();
+  return normalized === "ACCEPTED" || normalized.startsWith("APPROVED");
+};
+
+const mapHouseBookingDates = ({ check_in, check_out, check_in_date, check_out_date }) => ({
+  check_in: check_in || check_in_date,
+  check_out: check_out || check_out_date
+});
+
+const cleanupEmptyAllocationLocations = async (requestId, allocationId) => {
+  const { data: items, error } = await supabase
+    .from("allocation_items")
+    .select("id, room_id, house_id, member_allocations(id)")
+    .eq("allocation_id", allocationId);
+
+  if (error) throw error;
+
+  for (const item of items || []) {
+    const memberAllocations = item.member_allocations || [];
+    if (memberAllocations.length > 0) continue;
+
+    if (item.room_id) {
+      await supabase
+        .from("room_bookings")
+        .delete()
+        .eq("room_id", item.room_id)
+        .eq("request_id", requestId);
+    }
+
+    if (item.house_id) {
+      await supabase
+        .from("house_bookings")
+        .delete()
+        .eq("house_id", item.house_id)
+        .eq("request_id", requestId);
+    }
+
+    await supabase.from("allocation_items").delete().eq("id", item.id);
+  }
+};
 
 // =========================
 // AUTH MIDDLEWARE
@@ -45,6 +109,10 @@ const notifyAllocationUpdate = async (requestId) => {
       .select(`
         *,
         request_members (*),
+        house_bookings (
+          *,
+          houses (*)
+        ),
         allocations (
           *,
           allocation_items (
@@ -109,7 +177,9 @@ const notifyAllocationUpdate = async (requestId) => {
                 if (member) {
                   allocationDetails.allocations.push({
                     member_name: member.name,
-                    location: location
+                    location: location,
+                    latitude: item.rooms ? item.rooms.latitude : (item.houses ? item.houses.latitude : null),
+                    longitude: item.rooms ? item.rooms.longitude : (item.houses ? item.houses.longitude : null)
                   });
                 }
               });
@@ -119,18 +189,57 @@ const notifyAllocationUpdate = async (requestId) => {
       });
     }
 
+        // 3b. Add Direct House Bookings
+    if (fullRequest.house_bookings && fullRequest.house_bookings.length > 0) {
+      fullRequest.house_bookings.forEach(hb => {
+        const house = hb.houses;
+        if (house) {
+          const houseLocation = `House: ${house.owner_name} (${house.address || ''}) - Contact: ${house.contact_number || ''}`;
+          
+          fullRequest.request_members.forEach(m => {
+            const alreadyAssigned = allocationDetails.allocations.some(a => a.member_name === m.name);
+            if (!alreadyAssigned) {
+              allocationDetails.allocations.push({
+                member_name: m.name,
+                location: houseLocation,
+                latitude: house.latitude,
+                longitude: house.longitude,
+              });
+            }
+          });
+        }
+      });
+    }
+
     // 4. Send Emails
     const isApprovedStatus = fullRequest.status === "ACCEPTED" || fullRequest.status.startsWith("APPROVED");
+    const emailNotes = isApprovedStatus ? null : fullRequest.notes;
 
     for (const email of recipientEmails) {
       await sendRequestStatusEmail(
         email,
         fullRequest.status,
-        fullRequest.notes,
+        emailNotes,
         isApprovedStatus ? allocationDetails : null
       );
     }
     console.log(`✅ Allocation update emails sent to ${recipientEmails.size} recipients.`);
+
+    // --- PUBSUB NOTIFICATION FOR THE USER ---
+    try {
+      const status = fullRequest.status || 'Updated';
+      const requestName = fullRequest.request_name || 'Accommodation Request';
+      
+      await sendPubSubNotification(`user-notifications-${fullRequest.user_id}`, 'status_update', {
+        requestId: fullRequest.id,
+        status: status,
+        requestName: requestName,
+        request_name: requestName, // Fallback for snake_case
+        notes: isApprovedStatus ? '' : (fullRequest.notes || '')
+      });
+    } catch (pubSubErr) {
+      console.error("Failed to send PubSub notification to user:", pubSubErr);
+    }
   } catch (err) {
     console.error("❌ notifyAllocationUpdate ERROR:", err.message);
   }
@@ -141,6 +250,33 @@ const notifyAllocationUpdate = async (requestId) => {
 // =========================
 // REQUESTS CRUD
 // =========================
+
+// GET UNIQUE PRADESH LIST FROM DATABASE
+router.get("/pradesh", authenticateToken, async (req, res) => {
+  try {
+    // 1. Try fetching from a dedicated 'pradesh' table if it exists
+    const { data: tableData, error: tableError } = await supabase
+      .from("pradesh")
+      .select("name");
+
+    if (!tableError && tableData && tableData.length > 0) {
+      return res.json({ success: true, pradesh: tableData.map(p => p.name).sort() });
+    }
+
+    // 2. Fallback: Get unique pradesh from users and request_members
+    const { data: userData } = await supabase.from("users").select("pradesh");
+    const { data: memberData } = await supabase.from("request_members").select("pradesh");
+
+    const set = new Set();
+    if (userData) userData.forEach(u => u.pradesh && set.add(u.pradesh));
+    if (memberData) memberData.forEach(m => m.pradesh && set.add(m.pradesh));
+
+    const sortedList = Array.from(set).sort();
+    res.json({ success: true, pradesh: sortedList });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // GET ALL UNIQUE MEMBERS (ADMIN VIEW)
 router.get("/members", authenticateToken, authorizeAdmin, async (req, res) => {
@@ -164,7 +300,7 @@ router.get("/members", authenticateToken, authorizeAdmin, async (req, res) => {
       }
     });
 
-    res.json({ success: true, members: uniqueMembers });
+    res.json({ success: true, members: uniqueMembers.filter(m => m.pradesh !== 'DELETED') });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -203,17 +339,17 @@ router.put("/members/:id", authenticateToken, authorizeAdmin, async (req, res) =
   }
 });
 
-// DELETE MEMBER (Removes this specific record)
+// DELETE MEMBER (SOFT DELETE)
 router.delete("/members/:id", authenticateToken, authorizeAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     const { error } = await supabase
       .from("request_members")
-      .delete()
+      .update({ pradesh: 'DELETED' })
       .eq("id", id);
 
     if (error) throw error;
-    res.json({ success: true, message: "Member record deleted" });
+    res.json({ success: true, message: "Member record soft-deleted" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -227,6 +363,10 @@ router.get("/requests", authenticateToken, authorizeAdmin, async (req, res) => {
       .select(`
         *,
         request_members (*),
+        house_bookings (
+          *,
+          houses (*)
+        ),
         allocations (
           *,
           allocation_items (
@@ -240,6 +380,18 @@ router.get("/requests", authenticateToken, authorizeAdmin, async (req, res) => {
       .order("created_at", { ascending: false });
 
     if (error) return res.status(400).json({ error: error.message });
+
+    const userIds = [...new Set((data || []).map(reqItem => reqItem.user_id).filter(Boolean))];
+    let pradeshByUserId = new Map();
+    if (userIds.length > 0) {
+      const { data: users, error: usersError } = await supabase
+        .from("users")
+        .select("id, pradesh")
+        .in("id", userIds);
+
+      if (usersError) return res.status(400).json({ error: usersError.message });
+      pradeshByUserId = new Map((users || []).map(user => [user.id, user.pradesh || ""]));
+    }
 
     // Calculate unallocated members for each request
     const processedData = data.map(reqItem => {
@@ -264,7 +416,7 @@ router.get("/requests", authenticateToken, authorizeAdmin, async (req, res) => {
       }
 
       const pending_members = allMembers.filter(m => !allocatedMemberIds.has(m.id));
-      return { ...reqItem, pending_members };
+      return { ...reqItem, requester_pradesh: pradeshByUserId.get(reqItem.user_id) || "", pending_members };
     });
 
     res.json({ success: true, requests: processedData });
@@ -284,6 +436,10 @@ router.get("/requests/:id", authenticateToken, authorizeAdmin, async (req, res) 
       .select(`
         *,
         request_members (*),
+        house_bookings (
+          *,
+          houses (*)
+        ),
         allocations (
           *,
           allocation_items (
@@ -321,8 +477,13 @@ router.get("/requests/:id", authenticateToken, authorizeAdmin, async (req, res) 
     }
 
     const pending_members = allMembers.filter(m => !allocatedMemberIds.has(m.id));
+    const { data: requestOwner } = await supabase
+      .from("users")
+      .select("pradesh")
+      .eq("id", reqItem.user_id)
+      .single();
 
-    res.json({ success: true, request: { ...reqItem, pending_members } });
+    res.json({ success: true, request: { ...reqItem, requester_pradesh: requestOwner?.pradesh || "", pending_members } });
   } catch (err) {
     res.status(500).json({ error: "Internal server error" });
   }
@@ -331,7 +492,7 @@ router.get("/requests/:id", authenticateToken, authorizeAdmin, async (req, res) 
 // UPDATE REQUEST STATUS/DETAILS
 router.put("/requests/:id", authenticateToken, authorizeAdmin, async (req, res) => {
   const { id } = req.params;
-  const { status, notes, ...otherUpdates } = req.body;
+  const { status, notes, members, ...otherUpdates } = req.body;
 
   try {
     const { data, error } = await supabase
@@ -348,6 +509,83 @@ router.put("/requests/:id", authenticateToken, authorizeAdmin, async (req, res) 
     if (error) return res.status(400).json({ error: error.message });
 
     // 📧 SEND EMAIL IF CANCELLED (REJECTED) BY ADMIN
+    if (Array.isArray(members)) {
+      const { data: requestOwner, error: ownerError } = await supabase
+        .from("users")
+        .select("pradesh")
+        .eq("id", data.user_id)
+        .single();
+
+      if (ownerError) {
+        return res.status(400).json({ error: ownerError.message });
+      }
+
+      const requesterPradesh = requestOwner?.pradesh || null;
+
+      const hasMemberId = (member) => {
+        const rawId = member?.id;
+        if (rawId === null || rawId === undefined || rawId === "") return false;
+        return Number.isInteger(Number(rawId)) && Number(rawId) > 0;
+      };
+
+      const validMembers = members.filter(m => m && m.name);
+      const existingMemberIds = validMembers
+        .filter(hasMemberId)
+        .map(m => Number(m.id))
+        .filter(memberId => Number.isInteger(memberId) && memberId > 0);
+
+      let deleteQuery = supabase
+        .from("request_members")
+        .delete()
+        .eq("request_id", id);
+
+      if (existingMemberIds.length > 0) {
+        deleteQuery = deleteQuery.not("id", "in", `(${existingMemberIds.join(",")})`);
+      }
+
+      const { error: deleteMembersError } = await deleteQuery;
+      if (deleteMembersError) {
+        return res.status(400).json({ error: deleteMembersError.message });
+      }
+
+      const newMembers = validMembers
+        .filter(m => !hasMemberId(m))
+        .map(m => ({
+          request_id: Number(id),
+          name: m.name,
+          contact: m.contact || null,
+          pradesh: requesterPradesh,
+          email: m.email || null
+        }));
+
+      for (const member of validMembers.filter(hasMemberId)) {
+        const { error: updateMemberError } = await supabase
+          .from("request_members")
+          .update({
+            name: member.name,
+            contact: member.contact || null,
+            pradesh: requesterPradesh,
+            email: member.email || null
+          })
+          .eq("id", Number(member.id))
+          .eq("request_id", id);
+
+        if (updateMemberError) {
+          return res.status(400).json({ error: updateMemberError.message });
+        }
+      }
+
+      if (newMembers.length > 0) {
+        const { error: insertMembersError } = await supabase
+          .from("request_members")
+          .insert(newMembers);
+
+        if (insertMembersError) {
+          return res.status(400).json({ error: insertMembersError.message });
+        }
+      }
+    }
+
     if (status === 'CANCELLED') {
       try {
         console.log(`📧 Admin cancelled request ${id}, sending notification...`);
@@ -366,7 +604,62 @@ router.put("/requests/:id", authenticateToken, authorizeAdmin, async (req, res) 
       }
     }
 
-    res.json({ success: true, message: "Request updated successfully", request: data });
+    const { data: fullRequest } = await supabase
+      .from("requests")
+      .select(`
+        *,
+        request_members (*),
+        house_bookings (
+          *,
+          houses (*)
+        ),
+        house_bookings (
+          *,
+          houses (*)
+        ),
+        house_bookings (
+          *,
+          houses (*)
+        ),
+        house_bookings (
+          *,
+          houses (*)
+        ),
+        allocations (
+          *,
+          allocation_items (
+            *,
+            rooms (*),
+            houses (*),
+            member_allocations (*)
+          )
+        )
+      `)
+      .eq("id", id)
+      .single();
+
+    // ✅ Notify user of the update via PubSub and Email
+    try {
+      await notifyAllocationUpdate(id);
+    } catch (notifyErr) {
+      console.error("❌ Failed to send update notification:", notifyErr);
+    }
+
+    const requesterPradesh = fullRequest
+      ? await supabase
+          .from("users")
+          .select("pradesh")
+          .eq("id", fullRequest.user_id)
+          .single()
+      : null;
+
+    res.json({
+      success: true,
+      message: "Request updated successfully",
+      request: fullRequest
+        ? { ...fullRequest, requester_pradesh: requesterPradesh?.data?.pradesh || "" }
+        : data
+    });
   } catch (err) {
     console.error("UPDATE /admin/requests/:id ERROR:", err);
     res.status(500).json({ error: "Internal server error" });
@@ -375,20 +668,32 @@ router.put("/requests/:id", authenticateToken, authorizeAdmin, async (req, res) 
 
 
 
-// DELETE REQUEST
+// DELETE REQUEST (SOFT DELETE)
 router.delete("/requests/:id", authenticateToken, authorizeAdmin, async (req, res) => {
   const { id } = req.params;
 
-  await supabase.from("request_members").delete().eq("request_id", id);
+  try {
+    console.log(`🗑️ SOFT DELETING Request ID: ${id}`);
 
-  const { error } = await supabase
-    .from("requests")
-    .delete()
-    .eq("id", id);
+    // 1. Release all room bookings for this request
+    await supabase.from("room_bookings").delete().eq("request_id", id);
 
-  if (error) return res.status(400).json({ error: error.message });
+    // 2. Release all house bookings for this request
+    await supabase.from("house_bookings").delete().eq("request_id", id);
 
-  res.json({ success: true, message: "Request deleted" });
+    // 3. Update request status to 'DELETED' instead of hard delete
+    const { error } = await supabase
+      .from("requests")
+      .update({ status: 'CANCELLED', notes: `[DELETED] ${request.notes || ''}`.trim() })
+      .eq("id", id);
+
+    if (error) throw error;
+
+    res.json({ success: true, message: "Request soft-deleted and resources released" });
+  } catch (err) {
+    console.error("DELETE /requests/:id ERROR:", err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 
@@ -627,6 +932,23 @@ router.put("/allocation-items/:id", authenticateToken, authorizeAdmin, async (re
 router.delete("/allocation-items/:id", authenticateToken, authorizeAdmin, async (req, res) => {
   const { id } = req.params;
 
+  const { data: allocationItem, error: fetchError } = await supabase
+    .from("allocation_items")
+    .select("id, allocations!inner(requests!inner(check_in))")
+    .eq("id", id)
+    .single();
+
+  if (fetchError || !allocationItem) {
+    return res.status(404).json({ error: "Allocation item not found" });
+  }
+
+  const checkIn = allocationItem.allocations?.requests?.check_in;
+  if (!canModifyAllocationForCheckIn(checkIn)) {
+    return res.status(400).json({
+      error: "Allocation can be changed only before the check-in date."
+    });
+  }
+
   const { error } = await supabase
     .from("allocation_items")
     .delete()
@@ -643,11 +965,11 @@ router.delete("/allocation-items/:id", authenticateToken, authorizeAdmin, async 
 
 // CREATE USER / ADMIN
 router.post("/users", authenticateToken, authorizeAdmin, async (req, res) => {
-  const { name, email, phone, role, pradesh, password_hash } = req.body;
+  const { name, email, phone, role, pradesh } = req.body;
 
   const { data, error } = await supabase
     .from("users")
-    .insert([{ name, email, phone, role, pradesh, password_hash }])
+    .insert([{ name, email, phone, role, pradesh }])
     .select()
     .single();
 
@@ -662,6 +984,7 @@ router.get("/users", authenticateToken, authorizeAdmin, async (req, res) => {
   const { data, error } = await supabase
     .from("users")
     .select("*")
+    
     .order("id", { ascending: true });
 
   if (error) return res.status(400).json({ error: error.message });
@@ -749,18 +1072,21 @@ router.put("/users/:id", authenticateToken, authorizeAdmin, async (req, res) => 
 });
 
 
-// DELETE USER / ADMIN
+// DELETE USER / ADMIN (SOFT DELETE)
 router.delete("/users/:id", authenticateToken, authorizeAdmin, async (req, res) => {
   const { id } = req.params;
 
-  const { error } = await supabase
-    .from("users")
-    .delete()
-    .eq("id", id);
+  try {
+    const { error } = await supabase
+      .from("users")
+      .update({ role: null })
+      .eq("id", id);
 
-  if (error) return res.status(400).json({ error: error.message });
-
-  res.json({ success: true, message: "User deleted" });
+    if (error) throw error;
+    res.json({ success: true, message: "User soft-deleted" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // =========================
@@ -785,14 +1111,46 @@ router.get("/rooms/available", authenticateToken, authorizeAdmin, async (req, re
 
     const { data: bookings, error: bookingsError } = await supabase
       .from("room_bookings")
-      .select("room_id")
+      .select("room_id, request_id")
       .lte("check_in", check_out)
       .gte("check_out", check_in);
 
     if (bookingsError) throw bookingsError;
 
-    const occupiedRoomIds = new Set(bookings.map(b => b.room_id));
-    const availableRooms = allRooms.filter(room => !occupiedRoomIds.has(room.id));
+    const occupancyMap = {};
+    if (bookings && bookings.length > 0) {
+      const roomIds = [...new Set(bookings.map(b => b.room_id))];
+      const requestIds = [...new Set(bookings.map(b => b.request_id))];
+
+      const { data: memberAllocations, error: occupancyError } = await supabase
+        .from("member_allocations")
+        .select("request_member_id, allocation_items!inner(room_id, allocations!inner(request_id))")
+        .in("allocation_items.room_id", roomIds)
+        .in("allocation_items.allocations.request_id", requestIds);
+
+      if (occupancyError) throw occupancyError;
+
+      memberAllocations?.forEach(ma => {
+        const roomId = ma.allocation_items.room_id;
+        const requestId = ma.allocation_items.allocations.request_id;
+        const hasActiveBooking = bookings.some(b => b.room_id === roomId && b.request_id === requestId);
+        if (hasActiveBooking) {
+          occupancyMap[roomId] = (occupancyMap[roomId] || 0) + 1;
+        }
+      });
+    }
+
+    const availableRooms = allRooms
+      .map(room => {
+        const currentOccupancy = occupancyMap[room.id] || 0;
+        const remainingCapacity = Math.max(0, (Number(room.capacity) || 0) - currentOccupancy);
+        return {
+          ...room,
+          current_occupancy: currentOccupancy,
+          remaining_capacity: remainingCapacity
+        };
+      })
+      .filter(room => room.remaining_capacity > 0);
 
     res.json({ success: true, rooms: availableRooms });
   } catch (err) {
@@ -817,7 +1175,7 @@ router.get("/houses/available", authenticateToken, authorizeAdmin, async (req, r
 
     if (housesError) throw housesError;
 
-    // 2. Get all overlapping house bookings
+    // 2. Get all overlapping house bookings and count each booking row as one slot
     const { data: bookings, error: bookingsError } = await supabase
       .from("house_bookings")
       .select("house_id")
@@ -826,9 +1184,25 @@ router.get("/houses/available", authenticateToken, authorizeAdmin, async (req, r
 
     if (bookingsError) throw bookingsError;
 
-    // 3. Filter out booked houses
-    const occupiedHouseIds = new Set(bookings.map(b => b.house_id));
-    const availableHouses = allHouses.filter(house => !occupiedHouseIds.has(house.id));
+    const bookedCountByHouse = {};
+    bookings.forEach(booking => {
+      bookedCountByHouse[booking.house_id] = (bookedCountByHouse[booking.house_id] || 0) + 1;
+    });
+
+    // 3. Return houses with remaining capacity
+    const availableHouses = allHouses
+      .map(house => {
+        const bookedCount = bookedCountByHouse[house.id] || 0;
+        const capacity = Number(house.capacity) || 0;
+        const remainingCapacity = Math.max(0, capacity - bookedCount);
+        return {
+          ...house,
+          booked_count: bookedCount,
+          current_occupancy: bookedCount,
+          remaining_capacity: remainingCapacity
+        };
+      })
+      .filter(house => house.booked_count < (Number(house.capacity) || 0));
 
     res.json({ success: true, houses: availableHouses });
   } catch (err) {
@@ -884,6 +1258,10 @@ router.put("/requests/:id", authenticateToken, authorizeAdmin, async (req, res) 
       .select(`
         *,
         request_members (*),
+        house_bookings (
+          *,
+          houses (*)
+        ),
         allocations (
           *,
           allocation_items (
@@ -1157,12 +1535,37 @@ router.put("/member-allocations/:id", authenticateToken, authorizeAdmin, async (
 router.delete("/member-allocations/:id", authenticateToken, authorizeAdmin, async (req, res) => {
   const { id } = req.params;
 
+  const { data: existing, error: fetchError } = await supabase
+    .from("member_allocations")
+    .select("id, allocation_items!inner(allocation_id, allocations!inner(request_id, requests!inner(check_in)))")
+    .eq("id", id)
+    .single();
+
+  if (fetchError || !existing) {
+    return res.status(404).json({ error: "Member allocation not found" });
+  }
+
+  const requestId = existing.allocation_items?.allocations?.request_id;
+  const allocationId = existing.allocation_items?.allocation_id;
+  const checkIn = existing.allocation_items?.allocations?.requests?.check_in;
+
+  if (!canModifyAllocationForCheckIn(checkIn)) {
+    return res.status(400).json({
+      error: "Allocation can be changed only before the check-in date."
+    });
+  }
+
   const { error } = await supabase
     .from("member_allocations")
     .delete()
     .eq("id", id);
 
   if (error) return res.status(400).json({ error: error.message });
+
+  if (requestId && allocationId) {
+    await cleanupEmptyAllocationLocations(requestId, allocationId);
+    await notifyAllocationUpdate(requestId);
+  }
 
   res.json({ success: true, message: "Deleted successfully" });
 });
@@ -1173,7 +1576,8 @@ router.delete("/member-allocations/:id", authenticateToken, authorizeAdmin, asyn
 
 // CREATE HOUSE BOOKING
 router.post("/house-bookings", authenticateToken, authorizeAdmin, async (req, res) => {
-  const { house_id, request_id, check_in, check_out } = req.body;
+  const { house_id, request_id } = req.body;
+  const { check_in, check_out } = mapHouseBookingDates(req.body);
 
   const { data, error } = await supabase
     .from("house_bookings")
@@ -1186,7 +1590,7 @@ router.post("/house-bookings", authenticateToken, authorizeAdmin, async (req, re
   // Automatically update request status to ACCEPTED
   await supabase
     .from("requests")
-    .update({ status: 'ACCEPTED' })
+    .update({ status: 'ACCEPTED', notes: null })
     .eq("id", request_id);
 
   // ✅ Notify user of the new house allocation
@@ -1229,10 +1633,23 @@ router.get("/house-bookings/:id", authenticateToken, authorizeAdmin, async (req,
 // UPDATE HOUSE BOOKING
 router.put("/house-bookings/:id", authenticateToken, authorizeAdmin, async (req, res) => {
   const { id } = req.params;
+  const updates = { ...req.body };
+  if (
+    updates.check_in ||
+    updates.check_out ||
+    updates.check_in_date ||
+    updates.check_out_date
+  ) {
+    const { check_in, check_out } = mapHouseBookingDates(updates);
+    delete updates.check_in_date;
+    delete updates.check_out_date;
+    if (check_in) updates.check_in = check_in;
+    if (check_out) updates.check_out = check_out;
+  }
 
   const { data, error } = await supabase
     .from("house_bookings")
-    .update(req.body)
+    .update(updates)
     .eq("id", id)
     .select()
     .single();
@@ -1354,7 +1771,7 @@ router.post("/requests/:id/allocate-member", authenticateToken, authorizeAdmin, 
     // 1. Get request dates
     const { data: request, error: reqError } = await supabase
       .from("requests")
-      .select("check_in, check_out")
+      .select("check_in, check_out, status")
       .eq("id", request_id)
       .single();
 
@@ -1363,10 +1780,24 @@ router.post("/requests/:id/allocate-member", authenticateToken, authorizeAdmin, 
       return res.status(404).json({ error: "Request not found" });
     }
 
+    if (!canModifyAllocationForCheckIn(request.check_in)) {
+      return res.status(400).json({
+        error: "Allocation can be changed only before the check-in date."
+      });
+    }
+
     // 1.1 Capacity Check (If Room is selected)
     if (room_id) {
       const { data: room } = await supabase.from("rooms").select("capacity").eq("id", room_id).single();
       if (room) {
+        const selectedMemberCount = Math.max(1, Number(assigned_capacity) || 1);
+
+        if (selectedMemberCount > Number(room.capacity)) {
+          return res.status(400).json({
+            error: `Room capacity is ${room.capacity}. You can only allocate ${room.capacity} members.`
+          });
+        }
+
         // Find overlapping bookings
         const { data: activeBookings } = await supabase
           .from("room_bookings")
@@ -1386,6 +1817,7 @@ router.post("/requests/:id/allocate-member", authenticateToken, authorizeAdmin, 
 
           // Count unique members currently in THIS room for THESE dates
           const currentMembers = new Set();
+          const membersFromOtherRequests = new Set();
           memberAllocations?.forEach(ma => {
             const rId = ma.allocation_items.room_id;
             const reqId = ma.allocation_items.allocations.request_id;
@@ -1393,13 +1825,25 @@ router.post("/requests/:id/allocate-member", authenticateToken, authorizeAdmin, 
             const isValid = activeBookings.some(b => b.room_id === rId && b.request_id === reqId);
             if (isValid && rId === parseInt(room_id)) {
               currentMembers.add(ma.request_member_id);
+              if (parseInt(reqId) !== parseInt(request_id)) {
+                membersFromOtherRequests.add(ma.request_member_id);
+              }
             }
           });
 
+          const availableSlotsForThisRequest = Number(room.capacity) - membersFromOtherRequests.size;
+          if (selectedMemberCount > availableSlotsForThisRequest) {
+            return res.status(400).json({
+              error: `Room capacity is ${room.capacity}. You can only allocate ${Math.max(0, availableSlotsForThisRequest)} members.`
+            });
+          }
+
           // If this member is NOT already in the room, check if adding them exceeds capacity
           if (!currentMembers.has(parseInt(request_member_id))) {
-            if (currentMembers.size >= room.capacity) {
-              return res.status(400).json({ error: `Room capacity exceeded. Only ${room.capacity} members allowed.` });
+            if (currentMembers.size >= Number(room.capacity)) {
+              return res.status(400).json({
+                error: `Room capacity is ${room.capacity}. You can only allocate 0 members.`
+              });
             }
           }
         }
@@ -1602,24 +2046,294 @@ router.post("/requests/:id/allocate-member", authenticateToken, authorizeAdmin, 
 
     const allocatedCount = new Set(allocations.map(a => a.request_member_id)).size;
 
-    if (allocatedCount === (allMembers?.length || 0)) {
-      if (!currentRequest?.status || currentRequest.status.toUpperCase() === 'PENDING') {
+    const isFullyAllocated = allocatedCount === (allMembers?.length || 0);
+
+    if (isFullyAllocated) {
+      if (shouldPromoteRequestOnAllocation(currentRequest?.status)) {
         console.log(`[ALLOCATE] All ${allocatedCount} members allocated. Updating request ${request_id} status to ACCEPTED`);
         await supabase
           .from("requests")
-          .update({ status: 'ACCEPTED' })
+          .update({ status: 'ACCEPTED', notes: null })
           .eq("id", request_id);
       }
 
       // ✅ Notify user of the new/updated allocation
       await notifyAllocationUpdate(request_id);
     } else {
-      console.log(`[ALLOCATE] Only ${allocatedCount}/${allMembers?.length || 0} members allocated. Keeping status as ${currentRequest?.status || 'PENDING'}`);
+      if (isAcceptedOrApprovedStatus(currentRequest?.status)) {
+        await supabase
+          .from("requests")
+          .update({ status: "PENDING" })
+          .eq("id", request_id);
+      }
+      console.log(`[ALLOCATE] Only ${allocatedCount}/${allMembers?.length || 0} members allocated. Request ${request_id} remains partial pending.`);
     }
 
     res.json({ success: true, message: "Member allocated successfully", allocation: finalMA });
   } catch (err) {
     console.error("[ALLOCATE] ERROR:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// SYNC REQUEST ALLOCATION (Manage Allocation screen)
+router.post("/requests/:id/sync-allocation", authenticateToken, authorizeAdmin, async (req, res) => {
+  const { id: request_id } = req.params;
+  const { member_ids = [], room_id, house_id, assigned_capacity } = req.body;
+
+  if (!Array.isArray(member_ids)) {
+    return res.status(400).json({ error: "member_ids must be an array." });
+  }
+
+  if (!room_id && !house_id) {
+    return res.status(400).json({ error: "Please provide room_id or house_id." });
+  }
+
+  try {
+    const { data: request, error: reqError } = await supabase
+      .from("requests")
+      .select("check_in, check_out, status")
+      .eq("id", request_id)
+      .single();
+
+    if (reqError || !request) {
+      return res.status(404).json({ error: "Request not found" });
+    }
+
+    if (!canModifyAllocationForCheckIn(request.check_in)) {
+      return res.status(400).json({
+        error: "Allocation can be changed only before the check-in date."
+      });
+    }
+
+    const { data: requestMembers, error: membersError } = await supabase
+      .from("request_members")
+      .select("id")
+      .eq("request_id", request_id);
+
+    if (membersError) throw membersError;
+
+    const validMemberIds = new Set((requestMembers || []).map(m => Number(m.id)));
+    const selectedMemberIds = [...new Set(member_ids.map(id => Number(id)))]
+      .filter(id => validMemberIds.has(id));
+
+    if (room_id && selectedMemberIds.length > 0) {
+      const { data: room, error: roomError } = await supabase
+        .from("rooms")
+        .select("capacity")
+        .eq("id", room_id)
+        .single();
+
+      if (roomError || !room) {
+        return res.status(404).json({ error: "Room not found" });
+      }
+
+      const { data: activeBookings, error: activeBookingsError } = await supabase
+        .from("room_bookings")
+        .select("room_id, request_id")
+        .eq("room_id", room_id)
+        .lte("check_in", request.check_out)
+        .gte("check_out", request.check_in);
+
+      if (activeBookingsError) throw activeBookingsError;
+
+      const currentMembers = new Set();
+      if (activeBookings && activeBookings.length > 0) {
+        const requestIds = [...new Set(activeBookings.map(b => b.request_id))];
+        const { data: memberAllocations, error: memberAllocationsError } = await supabase
+          .from("member_allocations")
+          .select("request_member_id, allocation_items!inner(room_id, allocations!inner(request_id))")
+          .eq("allocation_items.room_id", room_id)
+          .in("allocation_items.allocations.request_id", requestIds);
+
+        if (memberAllocationsError) throw memberAllocationsError;
+
+        memberAllocations?.forEach(ma => {
+          const reqId = ma.allocation_items.allocations.request_id;
+          const hasActiveBooking = activeBookings.some(b => b.request_id === reqId);
+          if (hasActiveBooking) currentMembers.add(Number(ma.request_member_id));
+        });
+      }
+
+      const additions = selectedMemberIds.filter(memberId => !currentMembers.has(memberId));
+      const capacity = Number(room.capacity) || 0;
+      const remainingSlots = Math.max(0, capacity - currentMembers.size);
+
+      if (additions.length > remainingSlots) {
+        return res.status(400).json({
+          error: `Room capacity is ${capacity}. You can only allocate ${remainingSlots} more members.`
+        });
+      }
+    }
+
+    let { data: allocation, error: allocationError } = await supabase
+      .from("allocations")
+      .select("id")
+      .eq("request_id", request_id)
+      .maybeSingle();
+
+    if (allocationError) throw allocationError;
+
+    if (!allocation) {
+      const { data: newAllocation, error: createAllocationError } = await supabase
+        .from("allocations")
+        .insert([{ request_id }])
+        .select("id")
+        .single();
+
+      if (createAllocationError) throw createAllocationError;
+      allocation = newAllocation;
+    }
+
+    const filterCol = room_id ? "room_id" : "house_id";
+    const filterVal = Number(room_id || house_id);
+    const allocationType = room_id ? "ROOM" : "HOUSE";
+
+    let { data: item, error: itemFetchError } = await supabase
+      .from("allocation_items")
+      .select("id")
+      .eq("allocation_id", allocation.id)
+      .eq(filterCol, filterVal)
+      .maybeSingle();
+
+    if (itemFetchError) throw itemFetchError;
+
+    if (!item) {
+      const { data: newItem, error: createItemError } = await supabase
+        .from("allocation_items")
+        .insert([{
+          allocation_id: allocation.id,
+          room_id: room_id || null,
+          house_id: room_id ? null : house_id,
+          allocation_type: allocationType,
+          assigned_capacity: assigned_capacity || selectedMemberIds.length
+        }])
+        .select("id")
+        .single();
+
+      if (createItemError) throw createItemError;
+      item = newItem;
+    } else {
+      const { error: updateItemError } = await supabase
+        .from("allocation_items")
+        .update({
+          allocation_type: allocationType,
+          assigned_capacity: assigned_capacity || selectedMemberIds.length
+        })
+        .eq("id", item.id);
+
+      if (updateItemError) throw updateItemError;
+    }
+
+    const { data: existingMemberAllocations, error: existingError } = await supabase
+      .from("member_allocations")
+      .select("id, request_member_id, allocation_item_id, allocation_items!inner(allocation_id)")
+      .eq("allocation_items.allocation_id", allocation.id);
+
+    if (existingError) throw existingError;
+
+    const existingByMemberId = new Map();
+
+    for (const ma of existingMemberAllocations || []) {
+      existingByMemberId.set(Number(ma.request_member_id), ma);
+    }
+
+    for (const memberId of selectedMemberIds) {
+      const existing = existingByMemberId.get(memberId);
+      if (existing) {
+        if (Number(existing.allocation_item_id) !== Number(item.id)) {
+          const { error: updateMaError } = await supabase
+            .from("member_allocations")
+            .update({ allocation_item_id: item.id })
+            .eq("id", existing.id);
+
+          if (updateMaError) throw updateMaError;
+        }
+      } else {
+        const { error: insertMaError } = await supabase
+          .from("member_allocations")
+          .insert([{ request_member_id: memberId, allocation_item_id: item.id }]);
+
+        if (insertMaError) throw insertMaError;
+      }
+    }
+
+    if (selectedMemberIds.length > 0) {
+      if (room_id) {
+        const { data: existingBooking } = await supabase
+          .from("room_bookings")
+          .select("id")
+          .eq("room_id", room_id)
+          .eq("request_id", request_id)
+          .maybeSingle();
+
+        if (existingBooking) {
+          await supabase
+            .from("room_bookings")
+            .update({ check_in: request.check_in, check_out: request.check_out })
+            .eq("id", existingBooking.id);
+        } else {
+          await supabase
+            .from("room_bookings")
+            .insert([{ room_id, request_id, check_in: request.check_in, check_out: request.check_out }]);
+        }
+      } else if (house_id) {
+        const { data: existingBooking } = await supabase
+          .from("house_bookings")
+          .select("id")
+          .eq("house_id", house_id)
+          .eq("request_id", request_id)
+          .maybeSingle();
+
+        if (existingBooking) {
+          await supabase
+            .from("house_bookings")
+            .update({ check_in: request.check_in, check_out: request.check_out })
+            .eq("id", existingBooking.id);
+        } else {
+          await supabase
+            .from("house_bookings")
+            .insert([{ house_id, request_id, check_in: request.check_in, check_out: request.check_out }]);
+        }
+      }
+    }
+
+    await cleanupEmptyAllocationLocations(request_id, allocation.id);
+
+    let allocatedMembers = [];
+    if (validMemberIds.size > 0) {
+      const { data, error: allocatedMembersError } = await supabase
+        .from("member_allocations")
+        .select("request_member_id")
+        .in("request_member_id", [...validMemberIds]);
+
+      if (allocatedMembersError) throw allocatedMembersError;
+      allocatedMembers = data || [];
+    }
+
+    const allocatedCount = new Set(
+      allocatedMembers.map(ma => Number(ma.request_member_id))
+    ).size;
+    const isFullyAllocated = validMemberIds.size > 0 && allocatedCount >= validMemberIds.size;
+
+    if (isFullyAllocated && shouldPromoteRequestOnAllocation(request.status)) {
+      await supabase.from("requests").update({ status: "ACCEPTED", notes: null }).eq("id", request_id);
+    } else if (selectedMemberIds.length > 0) {
+      if (isAcceptedOrApprovedStatus(request.status)) {
+        await supabase.from("requests").update({ status: "PENDING" }).eq("id", request_id);
+      }
+      console.log(`[SYNC ALLOCATION] ${allocatedCount}/${validMemberIds.size} members allocated. Request ${request_id} remains partial pending.`);
+    }
+
+    await notifyAllocationUpdate(request_id);
+
+    res.json({
+      success: true,
+      message: "Allocation synced successfully",
+      selected_member_ids: selectedMemberIds
+    });
+  } catch (err) {
+    console.error("[SYNC ALLOCATION] ERROR:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1772,8 +2486,8 @@ router.post("/requests/:id/accept-complete", authenticateToken, authorizeAdmin, 
           .insert([{
             house_id: ha.house_id,
             request_id: id,
-            check_in: ha.check_in,
-            check_out: ha.check_out
+            check_in: ha.check_in || ha.check_in_date,
+            check_out: ha.check_out || ha.check_out_date
           }]);
 
         if (hbError) throw new Error("Failed to create house booking: " + hbError.message);
@@ -1794,3 +2508,4 @@ router.post("/requests/:id/accept-complete", authenticateToken, authorizeAdmin, 
 
 
 export default router;
+

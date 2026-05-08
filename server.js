@@ -7,6 +7,7 @@ import requestsRoutes from "./routes/requests.js";
 import adminRoutes from "./routes/admin.js";
 import roomRoutes from "./routes/rooms.js";
 import houseRoutes from "./routes/houses.js";
+import uploadRoutes from "./routes/upload.js";
 
 dotenv.config();
 
@@ -15,12 +16,14 @@ const app = express();
 app.use(cors());
 app.use(morgan("dev"));
 app.use(express.json());
+app.use("/uploads", express.static("uploads"));
 
 app.use("/auth", authRoutes);
 app.use("/requests", requestsRoutes);
 app.use("/admin", adminRoutes);
 app.use("/rooms", roomRoutes);
 app.use("/houses", houseRoutes);
+app.use("/upload", uploadRoutes);
 const server = app.listen(process.env.PORT, () => {
   console.log(`🚀 Server is definitely running on port ${process.env.PORT}`);
 }).on('error', (err) => {

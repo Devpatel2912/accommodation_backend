@@ -76,14 +76,60 @@ router.post("/", authenticateToken, authorizeAdmin, async (req, res) => {
 // 📄 GET ALL HOUSES
 // =========================
 router.get("/", authenticateToken, authorizeAdmin, async (req, res) => {
-    const { data, error } = await supabase
-        .from("houses")
-        .select("*")
-        .order("id", { ascending: true });
+    const { check_in, check_out } = req.query;
 
-    if (error) return res.status(400).json({ error: error.message });
+    // 1. Default to today if no dates provided
+    const today = new Date().toISOString().split('T')[0];
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    
+    const queryCheckIn = check_in || today;
+    const queryCheckOut = check_out || tomorrow;
 
-    res.json({ success: true, houses: data });
+    try {
+        // 1. Fetch all houses
+        let { data: houses, error: housesError } = await supabase
+            .from("houses")
+            .select("*")
+            .order("id", { ascending: true });
+
+        if (housesError) throw housesError;
+
+        // 2. Calculate occupancy for the selected (or default) dates.
+        // Each overlapping house booking row occupies one capacity slot.
+        const { data: activeBookings, error: bookingsError } = await supabase
+            .from("house_bookings")
+            .select("house_id")
+            .lte("check_in", queryCheckOut)
+            .gte("check_out", queryCheckIn);
+
+        if (bookingsError) throw bookingsError;
+
+        const occupancyMap = {};
+        activeBookings?.forEach(booking => {
+            occupancyMap[booking.house_id] = (occupancyMap[booking.house_id] || 0) + 1;
+        });
+
+        // 3. Map occupancy data to houses
+        houses = houses.map(house => {
+            const currentOccupancy = occupancyMap[house.id] || 0;
+            const remaining = (house.capacity || 0) - currentOccupancy;
+            return {
+                ...house,
+                booked_count: currentOccupancy,
+                current_occupancy: currentOccupancy,
+                remaining_capacity: Math.max(0, remaining)
+            };
+        });
+
+        res.json({
+            success: true,
+            houses: houses
+        });
+
+    } catch (error) {
+        console.error("GET HOUSES ERROR:", error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 
@@ -130,26 +176,21 @@ router.put("/:id", authenticateToken, authorizeAdmin, async (req, res) => {
 
 
 // =========================
-// ❌ DELETE HOUSE (SOFT DELETE)
+// ❌ DELETE HOUSE (HARD DELETE)
 // =========================
 router.delete("/:id", authenticateToken, authorizeAdmin, async (req, res) => {
     const { id } = req.params;
 
-    const { data, error } = await supabase
+    const { error } = await supabase
         .from("houses")
-        .update({ is_active: false })
-        .eq("id", id)
-        .select()
-        .single();
+        .delete()
+        .eq("id", id);
 
-    if (error || !data) {
-        return res.status(404).json({ error: "House not found" });
-    }
+    if (error) return res.status(400).json({ error: error.message });
 
     res.json({
         success: true,
-        message: "House deactivated",
-        house: data
+        message: "House deleted from database"
     });
 });
 
