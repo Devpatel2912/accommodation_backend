@@ -8,6 +8,7 @@ import adminRoutes from "./routes/admin.js";
 import roomRoutes from "./routes/rooms.js";
 import houseRoutes from "./routes/houses.js";
 import uploadRoutes from "./routes/upload.js";
+import notificationsRoutes from "./routes/notifications.js";
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use("/admin", adminRoutes);
 app.use("/rooms", roomRoutes);
 app.use("/houses", houseRoutes);
 app.use("/upload", uploadRoutes);
+app.use("/notifications", notificationsRoutes);
 const server = app.listen(process.env.PORT, () => {
   console.log(`🚀 Server is definitely running on port ${process.env.PORT}`);
 }).on('error', (err) => {
