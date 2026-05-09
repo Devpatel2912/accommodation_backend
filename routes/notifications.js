@@ -27,8 +27,10 @@ try {
  */
 router.post("/send-to-topic", async (req, res) => {
   const { topic, title, body, data } = req.body;
+  console.log(`Received notification request for topic: ${topic}, title: ${title}`);
 
   if (!topic || !title || !body) {
+    console.warn("Missing required fields for notification");
     return res.status(400).send({ error: "Missing required fields: topic, title, body" });
   }
 
@@ -50,11 +52,13 @@ router.post("/send-to-topic", async (req, res) => {
 
   try {
     const response = await admin.messaging().send(message);
+    console.log("Successfully sent message to FCM:", response);
     res.status(200).send({ success: true, messageId: response });
   } catch (error) {
-    console.error("Error sending message:", error);
+    console.error("Error sending message to FCM:", error);
     res.status(500).send({ error: error.message });
   }
 });
+
 
 export default router;
