@@ -21,12 +21,16 @@ export const verifyToken = (token) => {
 
 // 🔑 LOGIN token (main auth)
 export const createAuthToken = (user) => {
+  const payload = {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+  };
+  if (user.sub_admin_type) {
+    payload.sub_admin_type = user.sub_admin_type;
+  }
   return jwt.sign(
-    {
-      id: user.id,
-      email: user.email,
-      role: user.role
-    },
+    payload,
     process.env.JWT_SECRET,
     { expiresIn: "7d" }
   );

@@ -1,14 +1,21 @@
 import nodemailer from "nodemailer";
 
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true, // Use SSL
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+let _transporter = null;
+
+function getTransporter() {
+  if (!_transporter) {
+    _transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+  }
+  return _transporter;
+}
 
 
 // ✅ Send Status Update to User (Enhanced with Allocation Details)
@@ -45,7 +52,7 @@ export const sendRequestStatusEmail = async (email, status, notes, details = nul
     `;
   }
 
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: process.env.EMAIL_USER,
     to: email,
     subject: `Accommodation Request Update: ${status}`,
@@ -61,7 +68,7 @@ export const sendRequestStatusEmail = async (email, status, notes, details = nul
 
 // ✅ Send Initial Request Confirmation to User
 export const sendRequestConfirmationEmail = async (email, requestData) => {
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: process.env.EMAIL_USER,
     to: email,
     subject: "Accommodation Request Received",
@@ -90,7 +97,7 @@ export const sendMemberBookingEmail = async (email, memberName, details) => {
     </tr>
   `).join("");
 
-  await transporter.sendMail({
+  await getTransporter().sendMail({
     from: process.env.EMAIL_USER,
     to: email,
     subject: "Your Accommodation Booking Details",
@@ -136,7 +143,7 @@ export const sendMemberBookingEmail = async (email, memberName, details) => {
 export const sendOtpEmail = async (email, otp) => {
   console.log(`📧 Attempting to send OTP to: ${email}`);
   try {
-    const info = await transporter.sendMail({
+    const info = await getTransporter().sendMail({
       from: `"Accommodation App" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "Accommodation App - OTP Verification",

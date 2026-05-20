@@ -1,15 +1,16 @@
 {
-  "name": "accommodation",
+  "name": "accommodation-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Accommodation Management System - Backend API",
+  "main": "server.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev": "node --watch server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module",
   "dependencies": {
     "@supabase/supabase-js": "^2.104.1",
     "bcrypt": "^6.0.0",

@@ -1,5 +1,11 @@
-serviceAccountKey.json
+# Dependencies
 node_modules/
+
+# Environment
 .env
+
+# Secrets
+serviceAccountKey.json
+
+# Uploads
 uploads/
-scratch/
