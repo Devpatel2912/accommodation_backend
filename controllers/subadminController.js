@@ -17,12 +17,11 @@ export const getSubAdminRequests = async (req, res) => {
       return res.status(400).json({ error: "SubAdmin type not specified" });
     }
 
-    // Build the exact status value: "APPROVED (AVD)" or "APPROVED (ANAND)"
-    const targetStatus = `APPROVED (${subAdminType})`;
-    console.log(`🔍 SubAdmin query: type=${subAdminType}, targetStatus="${targetStatus}"`);
+    // Since the database ENUM only supports 'PENDING', 'ACCEPTED', 'CANCELLED',
+    // the admin app sets status to 'ACCEPTED' and puts 'APPROVED (AVD)' in the notes.
+    const targetPattern = `%APPROVED (${subAdminType})%`;
+    console.log(`🔍 SubAdmin query: type=${subAdminType}, checking notes for "${targetPattern}"`);
 
-    // Use textSearch with cast since status may be an enum type
-    // .filter("status::text", "ilike", pattern) casts enum to text for pattern matching
     const { data, error } = await supabase
       .from("requests")
       .select(`
@@ -42,7 +41,8 @@ export const getSubAdminRequests = async (req, res) => {
           )
         )
       `)
-      .filter("status::text", "eq", targetStatus)
+      .eq("status", "ACCEPTED")
+      .ilike("notes", targetPattern)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -76,7 +76,8 @@ export const getSubAdminRequests = async (req, res) => {
 
       const filtered = (allData || []).filter(r => {
         const status = String(r.status || "").trim().toUpperCase();
-        return status === targetStatus.toUpperCase();
+        const notes = String(r.notes || "").trim().toUpperCase();
+        return status === "ACCEPTED" && notes.includes(`APPROVED (${subAdminType})`);
       });
 
       console.log(`✅ Fallback: Found ${filtered.length} matching requests out of ${(allData || []).length} total`);

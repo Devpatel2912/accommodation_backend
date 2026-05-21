@@ -11,33 +11,75 @@ export const notifyAllocationUpdate = async (requestId) => {
     const { data: fullRequest, error: fetchError } = await RequestModel.getRequestWithNested(requestId);
     if (fetchError || !fullRequest) return;
 
-    const recipientEmails = new Set();
     const { data: userData } = await UserModel.findUserById(fullRequest.user_id, "id, name, phone, role, email, pradesh");
+    const recipientEmails = new Set();
     if (userData?.email) recipientEmails.add(userData.email);
     if (fullRequest.request_members) fullRequest.request_members.forEach(m => { if (m.email) recipientEmails.add(m.email); });
-    
-    // Notify all admins as well
-    const { data: adminUsers } = await supabase.from('users').select('email').eq('role', 'ADMIN');
-    if (adminUsers) {
-      adminUsers.forEach(admin => {
-        if (admin.email) recipientEmails.add(admin.email);
-      });
-    }
 
     if (recipientEmails.size === 0) return;
 
-    const allocationDetails = { check_in: fullRequest.check_in, check_out: fullRequest.check_out, allocations: [] };
+    const allocationDetails = {
+      check_in: fullRequest.check_in,
+      check_out: fullRequest.check_out,
+      requesterName: userData?.name || "N/A",
+      requesterPhone: userData?.phone || "N/A",
+      locations: [],
+      allocations: []
+    };
+    const locationKeys = new Set();
+
+    const addLocation = (key, location) => {
+      if (locationKeys.has(key)) return;
+      locationKeys.add(key);
+      allocationDetails.locations.push(location);
+    };
 
     if (fullRequest.allocations) {
       const allocArray = Array.isArray(fullRequest.allocations) ? fullRequest.allocations : [fullRequest.allocations];
       allocArray.forEach(alloc => {
         if (alloc.allocation_items) {
           (Array.isArray(alloc.allocation_items) ? alloc.allocation_items : [alloc.allocation_items]).forEach(item => {
-            const location = item.rooms ? `Room ${item.rooms.room_number}` : (item.houses ? `${item.houses.owner_name} (${item.houses.address})` : "Assigned");
+            const assignedMembers = (Array.isArray(item.member_allocations) ? item.member_allocations : [item.member_allocations || []])
+              .flat()
+              .map(ma => fullRequest.request_members?.find(m => m.id === ma.request_member_id)?.name)
+              .filter(Boolean)
+              .join(", ");
+            let location = "Assigned";
+            if (item.rooms) {
+              location = `Room ${item.rooms.room_number} - Capacity: ${item.rooms.capacity ?? "N/A"}`;
+              addLocation(`room-${item.rooms.id || item.room_id}`, {
+                type: "Room",
+                title: `Room ${item.rooms.room_number}`,
+                room_number: item.rooms.room_number,
+                capacity: item.rooms.capacity,
+                assigned_members: assignedMembers,
+                latitude: item.rooms.latitude,
+                longitude: item.rooms.longitude
+              });
+            } else if (item.houses) {
+              location = `House ${item.houses.owner_name} - ${item.houses.address || "Address N/A"} - Contact: ${item.houses.contact_number || "N/A"}`;
+              addLocation(`house-${item.houses.id || item.house_id}`, {
+                type: "House",
+                title: `House ${item.houses.owner_name || item.house_id}`,
+                owner_name: item.houses.owner_name,
+                contact_number: item.houses.contact_number,
+                address: item.houses.address,
+                capacity: item.houses.capacity,
+                assigned_members: assignedMembers,
+                latitude: item.houses.latitude,
+                longitude: item.houses.longitude
+              });
+            }
             if (item.member_allocations) {
               (Array.isArray(item.member_allocations) ? item.member_allocations : [item.member_allocations]).forEach(ma => {
-                const member = fullRequest.request_members.find(m => m.id === ma.request_member_id);
-                if (member) allocationDetails.allocations.push({ member_name: member.name, location, latitude: item.rooms?.latitude || item.houses?.latitude, longitude: item.rooms?.longitude || item.houses?.longitude });
+                const member = fullRequest.request_members?.find(m => m.id === ma.request_member_id);
+                if (member) allocationDetails.allocations.push({
+                  member_name: member.name,
+                  member_contact: member.contact || "N/A",
+                  location,
+                  latitude: item.rooms?.latitude || item.houses?.latitude,
+                  longitude: item.rooms?.longitude || item.houses?.longitude
+                });
               });
             }
           });
@@ -50,9 +92,26 @@ export const notifyAllocationUpdate = async (requestId) => {
         const house = hb.houses;
         if (house) {
           const loc = `House: ${house.owner_name} (${house.address || ""}) - Contact: ${house.contact_number || ""}`;
-          fullRequest.request_members.forEach(m => {
+          addLocation(`house-booking-${house.id || hb.house_id}`, {
+            type: "House",
+            title: `House ${house.owner_name || hb.house_id}`,
+            owner_name: house.owner_name,
+            contact_number: house.contact_number,
+            address: house.address,
+            capacity: house.capacity,
+            assigned_members: fullRequest.request_members?.map(m => m.name).join(", "),
+            latitude: house.latitude,
+            longitude: house.longitude
+          });
+          (fullRequest.request_members || []).forEach(m => {
             if (!allocationDetails.allocations.some(a => a.member_name === m.name)) {
-              allocationDetails.allocations.push({ member_name: m.name, location: loc, latitude: house.latitude, longitude: house.longitude });
+              allocationDetails.allocations.push({
+                member_name: m.name,
+                member_contact: m.contact || "N/A",
+                location: loc,
+                latitude: house.latitude,
+                longitude: house.longitude
+              });
             }
           });
         }
@@ -295,17 +354,42 @@ export const getAvailableHouses = async (req, res) => {
     const { data: allHouses, error: housesErr } = await supabase.from("houses").select("*").eq("is_active", true);
     if (housesErr) throw housesErr;
 
-    const { data: bookings, error: bookingsErr } = await supabase.from("house_bookings").select("house_id").lte("check_in", check_out).gte("check_out", check_in);
+    const { data: bookings, error: bookingsErr } = await supabase
+      .from("house_bookings")
+      .select("house_id, request_id")
+      .lte("check_in", check_out)
+      .gte("check_out", check_in);
     if (bookingsErr) throw bookingsErr;
 
     const countMap = {};
-    bookings.forEach(b => { countMap[b.house_id] = (countMap[b.house_id] || 0) + 1; });
+    if (bookings?.length > 0) {
+      const houseIds = [...new Set(bookings.map(b => b.house_id).filter(Boolean))];
+      const requestIds = [...new Set(bookings.map(b => b.request_id).filter(Boolean))];
+      const { data: memberAllocations, error: maErr } = await supabase
+        .from("member_allocations")
+        .select("request_member_id, allocation_items!inner(house_id, allocations!inner(request_id))")
+        .in("allocation_items.house_id", houseIds)
+        .in("allocation_items.allocations.request_id", requestIds);
+      if (maErr) throw maErr;
+
+      memberAllocations?.forEach(ma => {
+        const houseId = ma.allocation_items?.house_id;
+        const requestId = ma.allocation_items?.allocations?.request_id;
+        if (bookings.some(b => b.house_id === houseId && b.request_id === requestId)) {
+          countMap[houseId] = (countMap[houseId] || 0) + 1;
+        }
+      });
+
+      bookings.forEach(b => {
+        if (!countMap[b.house_id]) countMap[b.house_id] = 1;
+      });
+    }
 
     const available = allHouses.map(house => {
       const booked = countMap[house.id] || 0;
-      const cap = Number(house.capacity) || 0;
+      const cap = Math.max(1, Number(house.capacity) || 0);
       return { ...house, booked_count: booked, current_occupancy: booked, remaining_capacity: Math.max(0, cap - booked) };
-    }).filter(h => h.booked_count < (Number(h.capacity) || 0));
+    }).filter(h => h.remaining_capacity > 0);
 
     res.json({ success: true, houses: available });
   } catch (err) {

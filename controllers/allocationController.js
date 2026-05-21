@@ -274,13 +274,11 @@ export const allocateMember = async (req, res) => {
 
     const { data: currentReq } = await supabase.from("requests").select("status").eq("id", request_id).single();
 
-    if (isFullyAllocated) {
-      if (shouldPromoteRequestOnAllocation(currentReq?.status)) {
-        await supabase.from("requests").update({ status: "ACCEPTED", notes: null }).eq("id", request_id);
+    if (allocatedCount > 0) {
+      if (shouldPromoteRequestOnAllocation(currentReq?.status) || isAcceptedOrApprovedStatus(currentReq?.status)) {
+        await supabase.from("requests").update({ status: "ACCEPTED" }).eq("id", request_id);
       }
       await notifyAllocationUpdate(request_id);
-    } else if (isAcceptedOrApprovedStatus(currentReq?.status)) {
-      await supabase.from("requests").update({ status: "PENDING" }).eq("id", request_id);
     }
 
     res.json({ success: true, message: "Member allocated successfully", allocation: finalMA });
@@ -378,12 +376,10 @@ export const syncAllocation = async (req, res) => {
       allocatedMembers = data || [];
     }
     const allocatedCount = new Set(allocatedMembers.map(ma => Number(ma.request_member_id))).size;
-    const isFullyAllocated = validMemberIds.size > 0 && allocatedCount >= validMemberIds.size;
-
-    if (isFullyAllocated && shouldPromoteRequestOnAllocation(request.status)) {
-      await supabase.from("requests").update({ status: "ACCEPTED", notes: null }).eq("id", request_id);
-    } else if (selectedMemberIds.length > 0 && isAcceptedOrApprovedStatus(request.status)) {
-      await supabase.from("requests").update({ status: "PENDING" }).eq("id", request_id);
+    if (allocatedCount > 0) {
+      if (shouldPromoteRequestOnAllocation(request.status) || isAcceptedOrApprovedStatus(request.status)) {
+        await supabase.from("requests").update({ status: "ACCEPTED" }).eq("id", request_id);
+      }
     }
 
     await notifyAllocationUpdate(request_id);
@@ -446,6 +442,7 @@ export const acceptComplete = async (req, res) => {
       }
     }
 
+    await notifyAllocationUpdate(id);
     res.json({ success: true, message: "Request accepted and fully allocated", allocation_id: allocation.id });
   } catch (err) {
     console.error("Accept-complete error:", err.message);

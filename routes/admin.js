@@ -1,5 +1,5 @@
 import express from "express";
-import { authenticateToken, authorizeAdmin } from "../middlewares/auth.js";
+import { authenticateToken, authorizeAdmin, authorizeSubAdmin } from "../middlewares/auth.js";
 import * as adminCtrl from "../controllers/adminController.js";
 import * as allocCtrl from "../controllers/allocationController.js";
 import * as userCtrl from "../controllers/userController.js";
@@ -44,8 +44,8 @@ router.put("/users/:id", authenticateToken, authorizeAdmin, userCtrl.updateUser)
 router.delete("/users/:id", authenticateToken, authorizeAdmin, userCtrl.deleteUser);
 
 // ─── Available Rooms/Houses ─────────────────────────────────────────
-router.get("/rooms/available", authenticateToken, authorizeAdmin, adminCtrl.getAvailableRooms);
-router.get("/houses/available", authenticateToken, authorizeAdmin, adminCtrl.getAvailableHouses);
+router.get("/rooms/available", authenticateToken, authorizeSubAdmin, adminCtrl.getAvailableRooms);
+router.get("/houses/available", authenticateToken, authorizeSubAdmin, adminCtrl.getAvailableHouses);
 
 // ─── Member Allocations ─────────────────────────────────────────────
 router.post("/member-allocations", authenticateToken, authorizeAdmin, allocCtrl.createMemberAllocation);
@@ -73,8 +73,8 @@ router.post("/house-bookings/:id/release", authenticateToken, authorizeAdmin, ho
 router.post("/houses/:house_id/release", authenticateToken, authorizeAdmin, houseCtrl.releaseHouseByHouseId);
 
 // ─── Easy Allocation ────────────────────────────────────────────────
-router.post("/requests/:id/allocate-member", authenticateToken, authorizeAdmin, allocCtrl.allocateMember);
-router.post("/requests/:id/sync-allocation", authenticateToken, authorizeAdmin, allocCtrl.syncAllocation);
-router.post("/requests/:id/accept-complete", authenticateToken, authorizeAdmin, allocCtrl.acceptComplete);
+router.post("/requests/:id/allocate-member", authenticateToken, authorizeSubAdmin, allocCtrl.allocateMember);
+router.post("/requests/:id/sync-allocation", authenticateToken, authorizeSubAdmin, allocCtrl.syncAllocation);
+router.post("/requests/:id/accept-complete", authenticateToken, authorizeSubAdmin, allocCtrl.acceptComplete);
 
 export default router;
