@@ -1,8 +1,9 @@
 import * as UserModel from "../models/userModel.js";
 
 export const createUser = async (req, res) => {
-  const { name, email, phone, role, pradesh, sub_admin_type } = req.body;
-  const userData = { name, email, phone, role, pradesh };
+  const { name, email, phone, role, pradesh, pradesh_id, sub_admin_type } = req.body;
+  // Fallback to storing string if no ID provided, but preferably store pradesh_id
+  const userData = { name, email, phone, role, pradesh, pradesh_id };
   if (role?.toUpperCase() === "SUBADMIN" && sub_admin_type) {
     userData.sub_admin_type = sub_admin_type.toUpperCase();
   }

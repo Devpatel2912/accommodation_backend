@@ -73,19 +73,14 @@ export const softDeleteUser = async (id) => {
 export const getPradeshList = async () => {
   const { data: tableData, error: tableError } = await supabase
     .from("pradesh")
-    .select("name");
+    .select("id, name")
+    .order("name", { ascending: true });
 
   if (!tableError && tableData && tableData.length > 0) {
-    return tableData.map(p => p.name).sort();
+    return tableData;
   }
 
-  // Fallback: aggregate from users + request_members
-  const { data: userData } = await supabase.from("users").select("pradesh");
-  const { data: memberData } = await supabase.from("request_members").select("pradesh");
-
-  const set = new Set();
-  if (userData) userData.forEach(u => u.pradesh && set.add(u.pradesh));
-  if (memberData) memberData.forEach(m => m.pradesh && set.add(m.pradesh));
-
-  return Array.from(set).sort();
+  // Fallback if table fails or is empty, returning dummy IDs for old data is problematic
+  // but we can just return empty or rely on the table since it's being created.
+  return [];
 };
