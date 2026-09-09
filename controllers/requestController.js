@@ -9,6 +9,16 @@ import { sendPubSubNotification } from "../utils/pubsub.js";
 // Multer for in-memory excel uploads
 export const excelUpload = multer({ storage: multer.memoryStorage() });
 
+// ─── Fetch Pradesh map to convert string to id ──────────────────────
+const getPradeshMap = async () => {
+  const { data } = await supabase.from('pradesh').select('id, name');
+  const map = {};
+  if (data) {
+    data.forEach(p => map[p.name] = p.id);
+  }
+  return map;
+};
+
 // ─── Deduplicate members helper ─────────────────────────────────────
 const deduplicateMembers = (members) => {
   const unique = [];
@@ -32,11 +42,15 @@ export const getMemberSuggestions = async (req, res) => {
   try {
     let members;
     if (is_admin) {
-      let query = supabase.from("request_members").select("*");
-      if (pradesh) query = query.eq("pradesh", pradesh);
+      let query = supabase.from("request_members").select("*, pradesh(name)");
+      // Note: if pradesh is a string, we would need to map it to an id to query perfectly,
+      // but we can query nested relation or just fetch and filter in memory if needed.
       const { data, error } = await query;
       if (error) throw error;
       members = data;
+      if (pradesh) {
+        members = members.filter(m => m.pradesh && m.pradesh.name === pradesh);
+      }
     } else {
       const { data: requests } = await RequestModel.getRequestIdsByUser(user_id);
       if (!requests || requests.length === 0) return res.json({ success: true, members: [] });
@@ -44,6 +58,18 @@ export const getMemberSuggestions = async (req, res) => {
       if (error) throw error;
       members = data;
     }
+    
+    // Map nested pradesh back to string for the frontend
+    if (members) {
+      members.forEach(m => {
+        if (m.pradesh && m.pradesh.name) {
+          m.pradesh = m.pradesh.name;
+        } else if (typeof m.pradesh !== 'string') {
+          m.pradesh = "";
+        }
+      });
+    }
+
     res.json({ success: true, members: deduplicateMembers(members) });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -57,6 +83,14 @@ export const getMyMembers = async (req, res) => {
     const { data: requests } = await RequestModel.getRequestIdsByUser(user_id);
     if (!requests || requests.length === 0) return res.json({ success: true, members: [] });
     const { data: members } = await RequestModel.getMembersByRequestIds(requests.map(r => r.id));
+    
+    if (members) {
+      members.forEach(m => {
+        if (m.pradesh && m.pradesh.name) m.pradesh = m.pradesh.name;
+        else if (typeof m.pradesh !== 'string') m.pradesh = "";
+      });
+    }
+    
     res.json({ success: true, members: deduplicateMembers(members) });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -75,8 +109,9 @@ export const updateMember = async (req, res) => {
       return res.status(403).json({ error: "Access denied" });
     }
     const { data: userRequests } = await RequestModel.getRequestIdsByUser(user_id);
+    const pradeshMap = await getPradeshMap();
     const { error } = await RequestModel.updateMembersByIdentity(
-      userRequests.map(r => r.id), member, { name, contact, email, pradesh }
+      userRequests.map(r => r.id), member, { name, contact, email, pradesh_id: pradeshMap[pradesh] || null }
     );
     if (error) throw error;
     res.json({ success: true, message: "Member updated successfully" });
@@ -124,9 +159,10 @@ export const createRequest = async (req, res) => {
     });
     if (requestError) return res.status(400).json({ error: requestError.message });
 
+    const pradeshMap = await getPradeshMap();
     const membersData = members.map(m => ({
       request_id: requestData.id, name: m.name,
-      contact: m.contact || null, pradesh: m.pradesh || userPradesh, email: m.email || null
+      contact: m.contact || null, pradesh_id: pradeshMap[m.pradesh || userPradesh] || null, email: m.email || null
     }));
 
     const { error: membersError } = await RequestModel.insertRequestMembers(membersData);
@@ -177,6 +213,12 @@ export const getMyRequests = async (req, res) => {
           allocationData = { ...allocation, items: items || [] };
         }
       }
+      if (reqItem.request_members) {
+        reqItem.request_members.forEach(m => {
+          if (m.pradesh && m.pradesh.name) m.pradesh = m.pradesh.name;
+          else if (typeof m.pradesh !== 'string') m.pradesh = "";
+        });
+      }
       result.push({ ...reqItem, allocation: allocationData });
     }
     res.json({ success: true, requests: result });
@@ -211,9 +253,10 @@ export const updateMyRequest = async (req, res) => {
 
     await RequestModel.deleteRequestMembers(id);
 
+    const pradeshMap = await getPradeshMap();
     const membersData = members.filter(m => m && m.name).map(m => ({
       request_id: id, name: m.name, contact: m.contact || null,
-      pradesh: m.pradesh || userPradesh, email: m.email || null
+      pradesh_id: pradeshMap[m.pradesh || userPradesh] || null, email: m.email || null
     }));
     if (membersData.length === 0) return res.status(400).json({ error: "Please add at least one member" });
 
@@ -242,10 +285,11 @@ export const uploadMembersExcel = async (req, res) => {
       return foundKey ? row[foundKey] : null;
     };
 
+    const pradeshMap = await getPradeshMap();
     const membersData = rows.map(row => ({
       request_id: requestId, name: findVal(row, "name"),
       contact: findVal(row, "contact")?.toString() || null,
-      pradesh: findVal(row, "pradesh") || null, email: findVal(row, "email") || null
+      pradesh_id: pradeshMap[findVal(row, "pradesh")] || null, email: findVal(row, "email") || null
     })).filter(m => m.name);
 
     if (membersData.length === 0) return res.status(400).json({ error: "No valid member data found" });

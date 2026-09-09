@@ -44,7 +44,7 @@ export const createUser = async (userData) => {
 export const getAllUsers = async () => {
   const { data, error } = await supabase
     .from("users")
-    .select("*")
+    .select("*, pradesh(name)")
     .order("id", { ascending: true });
   return { data, error };
 };

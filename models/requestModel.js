@@ -16,7 +16,7 @@ export const getUserRequests = async (userId) => {
     .from("requests")
     .select(`
       *,
-      request_members (*),
+      request_members (*, pradesh(name)),
       house_bookings (
         *,
         houses (*)
@@ -62,7 +62,7 @@ export const getAllRequestsWithNested = async () => {
     .from("requests")
     .select(`
       *,
-      request_members (*),
+      request_members (*, pradesh(name)),
       house_bookings (
         *,
         houses (*)
@@ -87,7 +87,7 @@ export const getRequestWithNested = async (id) => {
     .from("requests")
     .select(`
       *,
-      request_members (*),
+      request_members (*, pradesh(name)),
       house_bookings (
         *,
         houses (*)
@@ -114,7 +114,7 @@ export const getRequestForForward = async (id) => {
     .select(`
       *,
       users (name, email, phone),
-      request_members (*),
+      request_members (*, pradesh(name)),
       allocations (
         *,
         allocation_items (
@@ -158,7 +158,7 @@ export const getRequestIdsByUser = async (userId) => {
 export const getMembersByRequestIds = async (requestIds) => {
   const { data, error } = await supabase
     .from("request_members")
-    .select("*")
+    .select("*, pradesh(name)")
     .in("request_id", requestIds);
   return { data, error };
 };
@@ -166,7 +166,7 @@ export const getMembersByRequestIds = async (requestIds) => {
 export const getMemberById = async (id) => {
   const { data, error } = await supabase
     .from("request_members")
-    .select("*, requests(user_id)")
+    .select("*, requests(user_id), pradesh(name)")
     .eq("id", id)
     .single();
   return { data, error };

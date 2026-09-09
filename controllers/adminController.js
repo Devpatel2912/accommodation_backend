@@ -191,14 +191,20 @@ export const deleteMember = async (req, res) => {
 export const getAllRequests = async (req, res) => {
   try {
     const { data, error } = await RequestModel.getAllRequestsWithNested();
-    if (error) return res.status(400).json({ error: error.message });
+    if (error) {
+      console.error("GET /admin/requests - getAllRequestsWithNested ERROR:", JSON.stringify(error));
+      return res.status(400).json({ error: error.message });
+    }
 
     const userIds = [...new Set((data || []).map(r => r.user_id).filter(Boolean))];
     let pradeshMap = new Map();
     if (userIds.length > 0) {
-      const { data: users, error: usersErr } = await supabase.from("users").select("id, pradesh").in("id", userIds);
-      if (usersErr) return res.status(400).json({ error: usersErr.message });
-      pradeshMap = new Map((users || []).map(u => [u.id, u.pradesh || ""]));
+      const { data: users, error: usersErr } = await supabase.from("users").select("id, pradesh_id, pradesh(name)").in("id", userIds);
+      if (usersErr) {
+        console.error("GET /admin/requests - users pradesh query ERROR:", JSON.stringify(usersErr));
+        return res.status(400).json({ error: usersErr.message });
+      }
+      pradeshMap = new Map((users || []).map(u => [u.id, u.pradesh?.name || ""]));
     }
 
     const processed = data.map(reqItem => {
@@ -250,6 +256,16 @@ export const getRequestById = async (req, res) => {
   }
 };
 
+// ─── Fetch Pradesh map to convert string to id ──────────────────────
+const getPradeshMap = async () => {
+  const { data } = await supabase.from('pradesh').select('id, name');
+  const map = {};
+  if (data) {
+    data.forEach(p => map[p.name] = p.id);
+  }
+  return map;
+};
+
 // ─── UPDATE REQUEST (ADMIN) ────────────────────────────────────────
 export const updateRequest = async (req, res) => {
   const { id } = req.params;
@@ -260,8 +276,11 @@ export const updateRequest = async (req, res) => {
     if (error) return res.status(400).json({ error: error.message });
 
     if (Array.isArray(members)) {
-      const { data: owner } = await UserModel.findUserById(data.user_id, "pradesh");
-      const reqPradesh = owner?.pradesh || null;
+      const { data: owner } = await UserModel.findUserById(data.user_id, "pradesh_id, pradesh(name)");
+      const reqPradesh = owner?.pradesh?.name || null;
+      const pradeshMap = await getPradeshMap();
+      const reqPradeshId = owner?.pradesh_id || pradeshMap[reqPradesh] || null;
+      
       const hasMemberId = (m) => { const rawId = m?.id; return rawId !== null && rawId !== undefined && rawId !== "" && Number.isInteger(Number(rawId)) && Number(rawId) > 0; };
       const validMembers = members.filter(m => m && m.name);
       const existingIds = validMembers.filter(hasMemberId).map(m => Number(m.id)).filter(id => Number.isInteger(id) && id > 0);
@@ -271,10 +290,10 @@ export const updateRequest = async (req, res) => {
       await delQuery;
 
       for (const member of validMembers.filter(hasMemberId)) {
-        await supabase.from("request_members").update({ name: member.name, contact: member.contact || null, pradesh: reqPradesh, email: member.email || null }).eq("id", Number(member.id)).eq("request_id", id);
+        await supabase.from("request_members").update({ name: member.name, contact: member.contact || null, pradesh_id: pradeshMap[member.pradesh || reqPradesh] || reqPradeshId, email: member.email || null }).eq("id", Number(member.id)).eq("request_id", id);
       }
 
-      const newMembers = validMembers.filter(m => !hasMemberId(m)).map(m => ({ request_id: Number(id), name: m.name, contact: m.contact || null, pradesh: reqPradesh, email: m.email || null }));
+      const newMembers = validMembers.filter(m => !hasMemberId(m)).map(m => ({ request_id: Number(id), name: m.name, contact: m.contact || null, pradesh_id: pradeshMap[m.pradesh || reqPradesh] || reqPradeshId, email: m.email || null }));
       if (newMembers.length > 0) await supabase.from("request_members").insert(newMembers);
     }
 

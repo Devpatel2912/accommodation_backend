@@ -42,7 +42,10 @@ export const register = async (req, res) => {
     if (selectError) return res.status(500).json({ error: "Failed to validate registration" });
     if (existing) return res.status(400).json({ error: "Email is already registered" });
 
-    const userData = { name, email, phone, role: normalizedRole, pradesh };
+    const userData = { name, email, phone, role: normalizedRole };
+    if (pradesh) {
+      userData.pradesh_id = parseInt(pradesh, 10);
+    }
     if (normalizedRole === "SUBADMIN" && sub_admin_type) {
       userData.sub_admin_type = String(sub_admin_type).trim().toUpperCase();
     }
@@ -86,8 +89,16 @@ export const verifyOtp = async (req, res) => {
 // ─── GET PROFILE ────────────────────────────────────────────────────
 export const getProfile = async (req, res) => {
   try {
-    const { data: user, error } = await UserModel.findUserById(req.user.id, "id, name, phone, role, email, pradesh, sub_admin_type");
+    const { data: user, error } = await UserModel.findUserById(req.user.id, "id, name, phone, role, email, pradesh_id, sub_admin_type, pradesh(name)");
     if (error || !user) return res.status(404).json({ error: "User not found" });
+    
+    // Map the joined pradesh name back to the old string field so the app works seamlessly
+    if (user.pradesh && user.pradesh.name) {
+      user.pradesh = user.pradesh.name;
+    } else {
+      user.pradesh = "";
+    }
+    
     res.json({ success: true, user });
   } catch {
     res.status(500).json({ error: "Internal server error" });
